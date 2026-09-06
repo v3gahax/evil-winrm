@@ -1,3 +1,9 @@
+### 4.2
+ - New AMSI bypass method: Bypass-4MSI now uses Return-0 stub (patches AmsiScanBuffer to return AMSI_RESULT_CLEAN via xor eax,eax;ret, built dynamically to evade signatures)
+ - New Bypass-4MSI-2: dual-function patch targeting both AmsiOpenSession and AmsiScanBuffer (novel surface, redundant)
+ - New Bypass-4MSI-Legacy: preserves the original byte-patch as fallback
+ - Fixed color rendering on Ruby 4.x (split colorize for prompt vs. output paths)
+
 ### 4.1
  - Enhanced compatibility with new bundler version
  - Added Ruby 4.0 support

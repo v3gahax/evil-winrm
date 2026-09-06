@@ -24,7 +24,7 @@ protocol, it is using PSRP (Powershell Remoting Protocol) for initializing runsp
  - Load in memory dll files bypassing some AVs
  - Load in memory C# (C Sharp) assemblies bypassing some AVs
  - Load x64 payloads generated with awesome [donut] technique
- - Dynamic AMSI Bypass to avoid AV signatures
+ - Dynamic AMSI Bypass (3 methods: Return-0 stub, Dual-function patch, Legacy byte-patch)
  - Pass-the-hash support
  - Kerberos auth support including also ccache and kirbi files
  - SSL and certificates support
@@ -68,7 +68,7 @@ Usage: evil-winrm -i IP -u USER [-s SCRIPTS_PATH] [-e EXES_PATH] [-P PORT] [-a U
 ```
 
 ## Requirements
-Ruby 2.3 or higher is needed. Some ruby gems are needed as well: `winrm >=2.3.7`, `winrm-fs >=1.3.2`, `stringio >=0.0.2`, `logger >= 1.4.3`, `fileutils >= 0.7.2`, `readline ~> 0.0.4`, `readline-ext ~> 0.2.0`.
+Ruby 2.3 or higher is needed (tested up to Ruby 4.0). Some ruby gems are needed as well: `winrm >=2.3.7`, `winrm-fs >=1.3.2`, `stringio >=0.0.2`, `logger >= 1.4.3`, `fileutils >= 0.7.2`, `readline ~> 0.0.4`, `readline-ext ~> 0.2.0`.
 Depending of your installation method (4 availables) the installation of them could be required to be done manually.
 
 Another important requirement only used for Kerberos auth is to install the Kerberos package used for network authentication.
@@ -149,6 +149,8 @@ _".,_,.__).,) (.._( ._),     )  , (._..( '.._"._, . '._)_(..,_(_".) _( _')
 [+] Donut-Loader
 [+] Invoke-Binary
 [+] Bypass-4MSI
+[+] Bypass-4MSI-2
+[+] Bypass-4MSI-Legacy
 [+] services
 [+] upload
 [+] download
@@ -331,7 +333,9 @@ l         ]     o !__./
 [+] Donut generated successfully: payload.bin
 ```
 
- - Bypass-4MSI: patchs AMSI protection.
+ - Bypass-4MSI: patches AMSI protection using a non-signatured Return-0 stub. Patches `AmsiScanBuffer` to return `AMSI_RESULT_CLEAN` (0) via `xor eax,eax; ret`. Byte values are built at runtime via arithmetic, avoiding the signatured `0xb8,0x34,0x12,0x07,0x80` literal. Default method; evades Windows Defender signatures.
+ - Bypass-4MSI-2: dual-function variant — patches **both** `AmsiOpenSession` and `AmsiScanBuffer` with return-0 stubs. `AmsiOpenSession` is a patch surface no public bypass tool targets. Provides redundancy: if one patch is detected, the other still breaks the scan pipeline.
+ - Bypass-4MSI-Legacy: the original `AmsiScanBuffer` byte-patch (`mov eax,0x80070057; ret`). Kept as fallback; may be flagged by modern AV.
 ```
 *Evil-WinRM* PS C:\> #amsiscanbuffer
 At line:1 char:1
@@ -591,7 +595,7 @@ Use it at your own servers and/or with the server owner's permission.
 [@arale61]: https://twitter.com/arale61
 
 <!-- Badges URLs -->
-[Version-shield]: https://img.shields.io/badge/version-4.1-blue.svg?style=flat-square&colorA=273133&colorB=0093ee "Latest version"
+[Version-shield]: https://img.shields.io/badge/version-4.2-blue.svg?style=flat-square&colorA=273133&colorB=0093ee "Latest version"
 [Ruby2.3-shield]: https://img.shields.io/badge/ruby-2.3%2B-blue.svg?style=flat-square&colorA=273133&colorB=ff0000 "Ruby 2.3 or later"
 [License-shield]: https://img.shields.io/badge/license-LGPL%20v3%2B-blue.svg?style=flat-square&colorA=273133&colorB=bd0000 "LGPL v3+"
 [Docker-shield]: https://github.com/Hackplayers/evil-winrm/actions/workflows/master.yml/badge.svg?branch=master "Docker CI master"

